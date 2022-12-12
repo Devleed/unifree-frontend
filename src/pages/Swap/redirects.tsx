@@ -7,7 +7,7 @@ import { ApplicationModal, setOpenModal } from '../../state/application/reducer'
 // Redirects to swap but only replace the pathname
 export function RedirectPathToSwapOnly() {
   const location = useLocation()
-  return <Navigate to={{ ...location, pathname: '/swap' }} replace />
+  return <Navigate to={{ ...location, pathname: '/pool' }} replace />
 }
 
 // Redirects from the /swap/:outputCurrency path to the /swap?outputCurrency=:outputCurrency format

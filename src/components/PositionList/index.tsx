@@ -1,9 +1,8 @@
 import { Trans } from '@lingui/macro'
-import PositionListItem from 'components/PositionListItem'
+import PositionListItem, { CustomPosition } from 'components/PositionListItem'
 import React from 'react'
 import styled from 'styled-components/macro'
 import { MEDIA_WIDTHS } from 'theme'
-import { PositionDetails } from 'types/position'
 
 const DesktopHeader = styled.div`
   display: none;
@@ -60,7 +59,7 @@ const ToggleLabel = styled.button`
 `
 
 type PositionListProps = React.PropsWithChildren<{
-  positions: PositionDetails[]
+  positions: CustomPosition[]
   setUserHideClosedPositions: any
   userHideClosedPositions: boolean
 }>
@@ -99,8 +98,8 @@ export default function PositionList({
           </ToggleLabel>
         </ToggleWrap>
       </MobileHeader>
-      {positions.map((p) => {
-        return <PositionListItem key={p.tokenId.toString()} positionDetails={p} />
+      {positions.map((p, i) => {
+        return <PositionListItem key={i.toString()} positionDetails={p} />
       })}
     </>
   )

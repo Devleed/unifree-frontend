@@ -1,39 +1,34 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { BigNumber } from '@ethersproject/bignumber'
-import type { TransactionResponse } from '@ethersproject/providers'
 import { Trans } from '@lingui/macro'
 import { Trace } from '@uniswap/analytics'
 import { PageName } from '@uniswap/analytics-events'
-import { Currency, CurrencyAmount, Fraction, Percent, Price, Token } from '@uniswap/sdk-core'
-import { NonfungiblePositionManager, Pool, Position } from '@uniswap/v3-sdk'
+import { Currency, CurrencyAmount, Percent, Price, Token } from '@uniswap/sdk-core'
+import { Pool, Position } from '@uniswap/v3-sdk'
 import { useWeb3React } from '@web3-react/core'
-import { sendEvent } from 'components/analytics'
 import Badge from 'components/Badge'
-import { ButtonConfirmed, ButtonGray, ButtonPrimary } from 'components/Button'
+import { ButtonPrimary } from 'components/Button'
 import { DarkCard, LightCard } from 'components/Card'
 import { AutoColumn } from 'components/Column'
 import DoubleCurrencyLogo from 'components/DoubleLogo'
 import Loader from 'components/Loader'
 import CurrencyLogo from 'components/Logo/CurrencyLogo'
 import { RowBetween, RowFixed } from 'components/Row'
-import { Dots } from 'components/swap/styleds'
-import Toggle from 'components/Toggle'
 import TransactionConfirmationModal, { ConfirmationModalContent } from 'components/TransactionConfirmationModal'
 import { useToken } from 'hooks/Tokens'
-import { useV3NFTPositionManagerContract } from 'hooks/useContract'
 import useIsTickAtLimit from 'hooks/useIsTickAtLimit'
 import { PoolState, usePool } from 'hooks/usePools'
 import useStablecoinPrice from 'hooks/useStablecoinPrice'
 import { useV3PositionFees } from 'hooks/useV3PositionFees'
 import { useV3PositionFromTokenId } from 'hooks/useV3Positions'
-import { useSingleCallResult } from 'lib/hooks/multicall'
 import useNativeCurrency from 'lib/hooks/useNativeCurrency'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useAppSelector } from 'state/hooks'
 import { Bound } from 'state/mint/v3/actions'
-import { useIsTransactionPending, useTransactionAdder } from 'state/transactions/hooks'
+import { useIsTransactionPending } from 'state/transactions/hooks'
 import styled, { useTheme } from 'styled-components/macro'
 import { ExternalLink, HideExtraSmall, ThemedText } from 'theme'
-import { currencyId } from 'utils/currencyId'
 import { formatCurrencyAmount } from 'utils/formatCurrencyAmount'
 import { formatTickPrice } from 'utils/formatTickPrice'
 import { unwrappedToken } from 'utils/unwrappedToken'
@@ -42,9 +37,6 @@ import RangeBadge from '../../components/Badge/RangeBadge'
 import { getPriceOrderingFromPositionForUI } from '../../components/PositionListItem'
 import RateToggle from '../../components/RateToggle'
 import { SwitchLocaleLink } from '../../components/SwitchLocaleLink'
-import { usePositionTokenURI } from '../../hooks/usePositionTokenURI'
-import { TransactionType } from '../../state/transactions/types'
-import { calculateGasMargin } from '../../utils/calculateGasMargin'
 import { ExplorerDataType, getExplorerLink } from '../../utils/getExplorerLink'
 import { LoadingRows } from './styleds'
 
@@ -325,26 +317,28 @@ const useInverter = ({
 }
 
 export function PositionPage() {
+  const [feeAmounts, setFeeAmounts] = useState<[CurrencyAmount<Currency>, CurrencyAmount<Currency>] | undefined>()
+
   const { tokenId: tokenIdFromUrl } = useParams<{ tokenId?: string }>()
   const { chainId, account, provider } = useWeb3React()
   const theme = useTheme()
+  const paperPositionDetails = useAppSelector(state => state.paperPosition.positionDetails)
 
   const parsedTokenId = tokenIdFromUrl ? BigNumber.from(tokenIdFromUrl) : undefined
   const { loading, position: positionDetails } = useV3PositionFromTokenId(parsedTokenId)
 
+  console.log('paperPositionDetails -', paperPositionDetails)
+
   const {
     token0: token0Address,
     token1: token1Address,
-    fee: feeAmount,
+    feeTier: feeAmount,
     liquidity,
     tickLower,
     tickUpper,
-    tokenId,
-  } = positionDetails || {}
+  } = paperPositionDetails || {}
 
-  const removed = liquidity?.eq(0)
-
-  const metadata = usePositionTokenURI(parsedTokenId)
+  const removed = liquidity === 0
 
   const token0 = useToken(token0Address)
   const token1 = useToken(token1Address)
@@ -407,111 +401,63 @@ export function PositionPage() {
   const [showConfirm, setShowConfirm] = useState(false)
 
   // usdc prices always in terms of tokens
-  const price0 = useStablecoinPrice(token0 ?? undefined)
-  const price1 = useStablecoinPrice(token1 ?? undefined)
+  const price0 = useStablecoinPrice(currency0 ?? undefined)
+  const price1 = useStablecoinPrice(currency1 ?? undefined)
 
-  const fiatValueOfFees: CurrencyAmount<Currency> | null = useMemo(() => {
-    if (!price0 || !price1 || !feeValue0 || !feeValue1) return null
+  console.log({price0, price1})
 
-    // we wrap because it doesn't matter, the quote returns a USDC amount
-    const feeValue0Wrapped = feeValue0?.wrapped
-    const feeValue1Wrapped = feeValue1?.wrapped
+  useEffect(() => {
+    if(paperPositionDetails && token0 && token1) {
+      const feeAmount0 = CurrencyAmount.fromRawAmount(receiveWETH ? token0 : unwrappedToken(token0), paperPositionDetails.feeEarning.amount0 * Math.pow(10, token0.decimals))
+      const feeAmount1 = CurrencyAmount.fromRawAmount(receiveWETH ? token1 : unwrappedToken(token1), paperPositionDetails.feeEarning.amount1 * Math.pow(10, token1.decimals))
 
-    if (!feeValue0Wrapped || !feeValue1Wrapped) return null
-
-    const amount0 = price0.quote(feeValue0Wrapped)
-    const amount1 = price1.quote(feeValue1Wrapped)
-    return amount0.add(amount1)
-  }, [price0, price1, feeValue0, feeValue1])
-
-  const fiatValueOfLiquidity: CurrencyAmount<Token> | null = useMemo(() => {
-    if (!price0 || !price1 || !position) return null
-    const amount0 = price0.quote(position.amount0)
-    const amount1 = price1.quote(position.amount1)
-    return amount0.add(amount1)
-  }, [price0, price1, position])
-
-  const addTransaction = useTransactionAdder()
-  const positionManager = useV3NFTPositionManagerContract()
-  const collect = useCallback(() => {
-    if (
-      !currency0ForFeeCollectionPurposes ||
-      !currency1ForFeeCollectionPurposes ||
-      !chainId ||
-      !positionManager ||
-      !account ||
-      !tokenId ||
-      !provider
-    )
-      return
-
-    setCollecting(true)
-
-    // we fall back to expecting 0 fees in case the fetch fails, which is safe in the
-    // vast majority of cases
-    const { calldata, value } = NonfungiblePositionManager.collectCallParameters({
-      tokenId: tokenId.toString(),
-      expectedCurrencyOwed0: feeValue0 ?? CurrencyAmount.fromRawAmount(currency0ForFeeCollectionPurposes, 0),
-      expectedCurrencyOwed1: feeValue1 ?? CurrencyAmount.fromRawAmount(currency1ForFeeCollectionPurposes, 0),
-      recipient: account,
-    })
-
-    const txn = {
-      to: positionManager.address,
-      data: calldata,
-      value,
+      setFeeAmounts([feeAmount0, feeAmount1])
     }
+  }, [token0, token1, paperPositionDetails, receiveWETH])
 
-    provider
-      .getSigner()
-      .estimateGas(txn)
-      .then((estimate) => {
-        const newTxn = {
-          ...txn,
-          gasLimit: calculateGasMargin(estimate),
-        }
+  useEffect(() => {
+    if(price0 && price1 && feeAmounts) {
+      console.log('p1 baseCurrency -', feeAmounts[1].wrapped.currency,price1.baseCurrency)
+      console.log('p0 baseCurrency -', feeAmounts[0].wrapped.currency,price0.baseCurrency)
 
-        return provider
-          .getSigner()
-          .sendTransaction(newTxn)
-          .then((response: TransactionResponse) => {
-            setCollectMigrationHash(response.hash)
-            setCollecting(false)
+      console.log('is equa -', feeAmounts[1].wrapped.currency.equals(price1.baseCurrency))
+    }
+  }, [price0, price1, feeAmounts])
 
-            sendEvent({
-              category: 'Liquidity',
-              action: 'CollectV3',
-              label: [currency0ForFeeCollectionPurposes.symbol, currency1ForFeeCollectionPurposes.symbol].join('/'),
-            })
+  // const fiatValueOfFees: CurrencyAmount<Currency> | null = useMemo(() => {
+  //   if (!price0 || !price1 || !feeAmounts || !feeAmounts[0] || !feeAmounts[1]) return null
 
-            addTransaction(response, {
-              type: TransactionType.COLLECT_FEES,
-              currencyId0: currencyId(currency0ForFeeCollectionPurposes),
-              currencyId1: currencyId(currency1ForFeeCollectionPurposes),
-              expectedCurrencyOwed0: CurrencyAmount.fromRawAmount(currency0ForFeeCollectionPurposes, 0).toExact(),
-              expectedCurrencyOwed1: CurrencyAmount.fromRawAmount(currency1ForFeeCollectionPurposes, 0).toExact(),
-            })
-          })
-      })
-      .catch((error) => {
-        setCollecting(false)
-        console.error(error)
-      })
-  }, [
-    chainId,
-    feeValue0,
-    feeValue1,
-    currency0ForFeeCollectionPurposes,
-    currency1ForFeeCollectionPurposes,
-    positionManager,
-    account,
-    tokenId,
-    addTransaction,
-    provider,
-  ])
+  //   // we wrap because it doesn't matter, the quote returns a USDC amount
+  //   const feeValue0Wrapped = feeAmounts[0]?.wrapped
+  //   const feeValue1Wrapped = feeAmounts[1]?.wrapped
 
-  const owner = useSingleCallResult(!!tokenId ? positionManager : null, 'ownerOf', [tokenId]).result?.[0]
-  const ownsNFT = owner === account || positionDetails?.operator === account
+  //   if (!feeValue0Wrapped || !feeValue1Wrapped) return null
+
+  //   const amount0 = price0.quote(feeValue0Wrapped)
+  //   const amount1 = price1.quote(feeValue1Wrapped)
+  //   return amount0.add(amount1)
+  // }, [price0, price1, feeAmounts])
+
+  // console.log('fiatValueOfFees -', fiatValueOfFees)
+
+  // const fiatValueOfLiquidity: CurrencyAmount<Token> | null = useMemo(() => {
+  //   if (!price0 || !price1 || !position) return null
+  //   const amount0 = price0.quote(position.amount0)
+  //   const amount1 = price1.quote(position.amount1)
+  //   return amount0.add(amount1)
+  // }, [price0, price1, position])
+
+  // console.log('fiatValueOfLiquidity -',fiatValueOfLiquidity)
+
+  // const addTransaction = useTransactionAdder()
+  // const positionManager = useV3NFTPositionManagerContract()
+  // const collect = useCallback(() => {
+    
+  // }, [
+  // ])
+
+  // const owner = useSingleCallResult(!!tokenId ? positionManager : null, 'ownerOf', [tokenId]).result?.[0]
+  // const ownsNFT = owner === account || positionDetails?.operator === account
 
   const feeValueUpper = inverted ? feeValue0 : feeValue1
   const feeValueLower = inverted ? feeValue1 : feeValue0
@@ -549,21 +495,21 @@ export function PositionPage() {
         <ThemedText.DeprecatedItalic>
           <Trans>Collecting fees will withdraw currently available fees for you.</Trans>
         </ThemedText.DeprecatedItalic>
-        <ButtonPrimary onClick={collect}>
+        <ButtonPrimary onClick={() => console.log('collect')}>
           <Trans>Collect</Trans>
         </ButtonPrimary>
       </AutoColumn>
     )
   }
 
-  const showCollectAsWeth = Boolean(
-    ownsNFT &&
-      (feeValue0?.greaterThan(0) || feeValue1?.greaterThan(0)) &&
-      currency0 &&
-      currency1 &&
-      (currency0.isNative || currency1.isNative) &&
-      !collectMigrationHash
-  )
+  // const showCollectAsWeth = Boolean(
+  //   ownsNFT &&
+  //     (feeValue0?.greaterThan(0) || feeValue1?.greaterThan(0)) &&
+  //     currency0 &&
+  //     currency1 &&
+  //     (currency0.isNative || currency1.isNative) &&
+  //     !collectMigrationHash
+  // )
 
   return loading || poolState === PoolState.LOADING || !feeAmount ? (
     <LoadingRows>
@@ -622,7 +568,7 @@ export function PositionPage() {
                   </Badge>
                   <RangeBadge removed={removed} inRange={inRange} />
                 </RowFixed>
-                {ownsNFT && (
+                {/* {ownsNFT && (
                   <RowFixed>
                     {currency0 && currency1 && feeAmount && tokenId ? (
                       <ButtonGray
@@ -648,12 +594,12 @@ export function PositionPage() {
                       </ResponsiveButtonPrimary>
                     ) : null}
                   </RowFixed>
-                )}
+                )} */}
               </ResponsiveRow>
               <RowBetween></RowBetween>
             </AutoColumn>
             <ResponsiveRow align="flex-start">
-              {'result' in metadata ? (
+              {false ? (
                 <DarkCard
                   width="100%"
                   height="100%"
@@ -665,14 +611,14 @@ export function PositionPage() {
                     marginRight: '12px',
                   }}
                 >
-                  <div style={{ marginRight: 12 }}>
+                  {/* <div style={{ marginRight: 12 }}>
                     <NFT image={metadata.result.image} height={400} />
                   </div>
                   {typeof chainId === 'number' && owner && !ownsNFT ? (
                     <ExternalLink href={getExplorerLink(chainId, owner, ExplorerDataType.ADDRESS)}>
                       <Trans>Owner</Trans>
                     </ExternalLink>
-                  ) : null}
+                  ) : null} */}
                 </DarkCard>
               ) : (
                 <DarkCard
@@ -689,7 +635,7 @@ export function PositionPage() {
               <AutoColumn gap="sm" style={{ width: '100%', height: '100%' }}>
                 <DarkCard>
                   <AutoColumn gap="md" style={{ width: '100%' }}>
-                    <AutoColumn gap="md">
+                    {/* <AutoColumn gap="md">
                       <Label>
                         <Trans>Liquidity</Trans>
                       </Label>
@@ -706,7 +652,7 @@ export function PositionPage() {
                           <Trans>$-</Trans>
                         </ThemedText.DeprecatedLargeHeader>
                       )}
-                    </AutoColumn>
+                    </AutoColumn> */}
                     <LightCard padding="12px 16px">
                       <AutoColumn gap="md">
                         <RowBetween>
@@ -743,7 +689,7 @@ export function PositionPage() {
                     </LightCard>
                   </AutoColumn>
                 </DarkCard>
-                <DarkCard>
+                {/* <DarkCard>
                   <AutoColumn gap="md" style={{ width: '100%' }}>
                     <AutoColumn gap="md">
                       <RowBetween style={{ alignItems: 'flex-start' }}>
@@ -850,7 +796,7 @@ export function PositionPage() {
                       </AutoColumn>
                     )}
                   </AutoColumn>
-                </DarkCard>
+                </DarkCard> */}
               </AutoColumn>
             </ResponsiveRow>
             <DarkCard>

@@ -1,21 +1,25 @@
 import { Trans } from '@lingui/macro'
 import { Percent, Price, Token } from '@uniswap/sdk-core'
+import IUniswapV2PairJson from '@uniswap/v2-core/build/IUniswapV2Pair.json'
 import { Position } from '@uniswap/v3-sdk'
+import { useWeb3React } from '@web3-react/core'
 import Badge from 'components/Badge'
 import RangeBadge from 'components/Badge/RangeBadge'
 import DoubleCurrencyLogo from 'components/DoubleLogo'
 import HoverInlineText from 'components/HoverInlineText'
 import Loader from 'components/Loader'
 import { RowBetween } from 'components/Row'
+import { ethers } from 'ethers'
 import { useToken } from 'hooks/Tokens'
 import useIsTickAtLimit from 'hooks/useIsTickAtLimit'
 import { usePool } from 'hooks/usePools'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAppDispatch, useAppSelector } from 'state/hooks'
 import { Bound } from 'state/mint/v3/actions'
+import { updateCustomPosition } from 'state/paperPosition/reducer'
 import styled from 'styled-components/macro'
 import { HideSmall, MEDIA_WIDTHS, SmallOnly } from 'theme'
-import { PositionDetails } from 'types/position'
 import { formatTickPrice } from 'utils/formatTickPrice'
 import { unwrappedToken } from 'utils/unwrappedToken'
 
@@ -108,8 +112,30 @@ const DataText = styled.div`
   `};
 `
 
+export type FeeEarning = {
+  amount0: number
+  amount1: number
+}
+export type FeesPerUnitLiquidity = {
+  amount0: number
+  amount1: number
+}
+export interface CustomPosition {
+    feeTier: number
+    liquidity: number
+    tickLower: number
+    tickUpper: number
+    poolAddress: string
+    amount0: number
+    amount1: number
+    feeEarning: FeeEarning
+    feesPerUnitLiquidity: FeesPerUnitLiquidity
+    lpTokens: number
+    user: string
+  }
+
 interface PositionListItemProps {
-  positionDetails: PositionDetails
+  positionDetails: CustomPosition
 }
 
 export function getPriceOrderingFromPositionForUI(position?: Position): {
@@ -167,14 +193,36 @@ export function getPriceOrderingFromPositionForUI(position?: Position): {
 }
 
 export default function PositionListItem({ positionDetails }: PositionListItemProps) {
+  const [token0Address, setToken0Address] = useState<string | null>(null)
+  const [token1Address, setToken1Address] = useState<string | null>(null)
+
+  const { provider } = useWeb3React()
   const {
-    token0: token0Address,
-    token1: token1Address,
-    fee: feeAmount,
+    feeTier: feeAmount,
     liquidity,
     tickLower,
     tickUpper,
+    poolAddress
   } = positionDetails
+
+  const dispatch = useAppDispatch()
+  const paperPositionDetails = useAppSelector(state => state.paperPosition.positionDetails)
+
+  useEffect(() => {
+    const fetchPairData = async () => {
+      const prov = ethers.providers.getDefaultProvider('https://mainnet.infura.io/v3/80ba3747876843469bf0c36d0a355f71')
+      const pair = new ethers.Contract(poolAddress,IUniswapV2PairJson.abi, prov)
+
+      console.log({pair})
+
+      const [token0, token1] = await Promise.all([pair!.token0(), pair!.token1()])
+
+      setToken0Address(token0)
+      setToken1Address(token1)
+    }
+
+   provider && poolAddress && fetchPairData()
+  }, [provider, poolAddress])
 
   const token0 = useToken(token0Address)
   const token1 = useToken(token1Address)
@@ -182,12 +230,27 @@ export default function PositionListItem({ positionDetails }: PositionListItemPr
   const currency0 = token0 ? unwrappedToken(token0) : undefined
   const currency1 = token1 ? unwrappedToken(token1) : undefined
 
+  useEffect(() => {
+    if(positionDetails && token0Address && token1Address) {
+      dispatch(updateCustomPosition({...positionDetails, token0: token0Address, token1: token1Address}))
+    }
+  }, [positionDetails, dispatch, token0Address, token1Address])
+
+  useEffect(() => {
+    console.log('paperPositionDetails -', paperPositionDetails)
+  }, [paperPositionDetails])
+
+
   // construct Position from details returned
   const [, pool] = usePool(currency0 ?? undefined, currency1 ?? undefined, feeAmount)
 
   const position = useMemo(() => {
     if (pool) {
-      return new Position({ pool, liquidity: liquidity.toString(), tickLower, tickUpper })
+      console.log({
+        pos: new Position({ pool, liquidity: Math.round(liquidity!).toString(), tickLower: tickLower!, tickUpper: tickUpper! })
+      })
+
+      return new Position({ pool, liquidity: Math.round(liquidity!).toString(), tickLower: tickLower!, tickUpper: tickUpper! })
     }
     return undefined
   }, [liquidity, pool, tickLower, tickUpper])
@@ -201,11 +264,11 @@ export default function PositionListItem({ positionDetails }: PositionListItemPr
   const currencyBase = base && unwrappedToken(base)
 
   // check if price is within range
-  const outOfRange: boolean = pool ? pool.tickCurrent < tickLower || pool.tickCurrent >= tickUpper : false
+  const outOfRange: boolean = pool ? pool.tickCurrent < tickLower! || pool.tickCurrent >= tickUpper! : false
 
-  const positionSummaryLink = '/pool/' + positionDetails.tokenId
+  const positionSummaryLink = '/pool/' + poolAddress
 
-  const removed = liquidity?.eq(0)
+  const removed = liquidity === (0)
 
   return (
     <LinkRow to={positionSummaryLink}>
@@ -218,7 +281,7 @@ export default function PositionListItem({ positionDetails }: PositionListItemPr
           &nbsp;
           <Badge>
             <BadgeText>
-              <Trans>{new Percent(feeAmount, 1_000_000).toSignificant()}%</Trans>
+              <Trans>{new Percent(feeAmount!, 1_000_000).toSignificant()}%</Trans>
             </BadgeText>
           </Badge>
         </PrimaryPositionIdData>

@@ -1,12 +1,9 @@
 import { BigNumber } from '@ethersproject/bignumber'
-import type { TransactionResponse } from '@ethersproject/providers'
 import { Trans } from '@lingui/macro'
-import { TraceEvent } from '@uniswap/analytics'
-import { BrowserEvent, ElementName, EventName } from '@uniswap/analytics-events'
 import { Currency, CurrencyAmount, Percent } from '@uniswap/sdk-core'
-import { FeeAmount, NonfungiblePositionManager } from '@uniswap/v3-sdk'
+import { FeeAmount, Pool } from '@uniswap/v3-sdk'
 import { useWeb3React } from '@web3-react/core'
-import { sendEvent } from 'components/analytics'
+import axios from 'axios'
 import UnsupportedCurrencyFooter from 'components/swap/UnsupportedCurrencyFooter'
 import useParsedQueryString from 'hooks/useParsedQueryString'
 import { useCallback, useEffect, useState } from 'react'
@@ -21,7 +18,7 @@ import {
 } from 'state/mint/v3/hooks'
 import { useTheme } from 'styled-components/macro'
 
-import { ButtonError, ButtonLight, ButtonPrimary, ButtonText, ButtonYellow } from '../../components/Button'
+import { ButtonError, ButtonPrimary, ButtonText, ButtonYellow } from '../../components/Button'
 import { BlueCard, OutlineCard, YellowCard } from '../../components/Card'
 import { AutoColumn } from '../../components/Column'
 import CurrencyInputPanel from '../../components/CurrencyInputPanel'
@@ -51,14 +48,10 @@ import { useV3PositionFromTokenId } from '../../hooks/useV3Positions'
 import { useToggleWalletModal } from '../../state/application/hooks'
 import { Bound, Field } from '../../state/mint/v3/actions'
 import { useTransactionAdder } from '../../state/transactions/hooks'
-import { TransactionType } from '../../state/transactions/types'
 import { useIsExpertMode, useUserSlippageToleranceWithDefault } from '../../state/user/hooks'
 import { ExternalLink, ThemedText } from '../../theme'
-import approveAmountCalldata from '../../utils/approveAmountCalldata'
-import { calculateGasMargin } from '../../utils/calculateGasMargin'
 import { currencyId } from '../../utils/currencyId'
 import { maxAmountSpend } from '../../utils/maxAmountSpend'
-import { Dots } from '../Pool/styleds'
 import { Review } from './Review'
 import {
   CurrencyDropdown,
@@ -232,104 +225,28 @@ export default function AddLiquidity() {
   )
 
   async function onAdd() {
-    if (!chainId || !provider || !account) return
+    const poolAddress = position ? Pool.getAddress(position?.pool.token0, position?.pool.token1, position?.pool.fee) : ''
 
-    if (!positionManager || !baseCurrency || !quoteCurrency) {
-      return
-    }
+    console.log({
+      poolAddress,
+      amount0: position?.amount0.toSignificant(4), amount1: position?.amount1.toSignificant(4),
+      tickLower: position?.tickLower,tickUpper: position?.tickUpper,token0Address: position?.pool.token0.address,
+      token1Address: position?.pool.token1.address,
+      feeTier: position?.pool.fee
+    })
 
-    if (position && account && deadline) {
-      const useNative = baseCurrency.isNative ? baseCurrency : quoteCurrency.isNative ? quoteCurrency : undefined
-      const { calldata, value } =
-        hasExistingPosition && tokenId
-          ? NonfungiblePositionManager.addCallParameters(position, {
-              tokenId,
-              slippageTolerance: allowedSlippage,
-              deadline: deadline.toString(),
-              useNative,
-            })
-          : NonfungiblePositionManager.addCallParameters(position, {
-              slippageTolerance: allowedSlippage,
-              recipient: account,
-              deadline: deadline.toString(),
-              useNative,
-              createPool: noLiquidity,
-            })
+    const {data} = await axios.post('http://localhost:3005/liquidity/add', {
+          poolAddress,
+          amount0: parseFloat(position?.amount0.toSignificant(6) || '0'), amount1: parseFloat(position?.amount1.toSignificant(6) || '0'),
+          tickLower: position?.tickLower || 0,tickUpper: position?.tickUpper || 0,token0: position?.pool.token0.address || '',
+          token1: position?.pool.token1.address || '',
+          feeTier: position?.pool.fee || 3000,
+          user: account
+    })
 
-      let txn: { to: string; data: string; value: string } = {
-        to: NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId],
-        data: calldata,
-        value,
-      }
+    console.log(data)
 
-      if (argentWalletContract) {
-        const amountA = parsedAmounts[Field.CURRENCY_A]
-        const amountB = parsedAmounts[Field.CURRENCY_B]
-        const batch = [
-          ...(amountA && amountA.currency.isToken
-            ? [approveAmountCalldata(amountA, NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId])]
-            : []),
-          ...(amountB && amountB.currency.isToken
-            ? [approveAmountCalldata(amountB, NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId])]
-            : []),
-          {
-            to: txn.to,
-            data: txn.data,
-            value: txn.value,
-          },
-        ]
-        const data = argentWalletContract.interface.encodeFunctionData('wc_multiCall', [batch])
-        txn = {
-          to: argentWalletContract.address,
-          data,
-          value: '0x0',
-        }
-      }
-
-      setAttemptingTxn(true)
-
-      provider
-        .getSigner()
-        .estimateGas(txn)
-        .then((estimate) => {
-          const newTxn = {
-            ...txn,
-            gasLimit: calculateGasMargin(estimate),
-          }
-
-          return provider
-            .getSigner()
-            .sendTransaction(newTxn)
-            .then((response: TransactionResponse) => {
-              setAttemptingTxn(false)
-              addTransaction(response, {
-                type: TransactionType.ADD_LIQUIDITY_V3_POOL,
-                baseCurrencyId: currencyId(baseCurrency),
-                quoteCurrencyId: currencyId(quoteCurrency),
-                createPool: Boolean(noLiquidity),
-                expectedAmountBaseRaw: parsedAmounts[Field.CURRENCY_A]?.quotient?.toString() ?? '0',
-                expectedAmountQuoteRaw: parsedAmounts[Field.CURRENCY_B]?.quotient?.toString() ?? '0',
-                feeAmount: position.pool.fee,
-              })
-              setTxHash(response.hash)
-              sendEvent({
-                category: 'Liquidity',
-                action: 'Add',
-                label: [currencies[Field.CURRENCY_A]?.symbol, currencies[Field.CURRENCY_B]?.symbol].join('/'),
-              })
-            })
-        })
-        .catch((error) => {
-          console.error('Failed to send transaction', error)
-          setAttemptingTxn(false)
-          // we only care if the error is something _other_ than the user rejected the tx
-          if (error?.code !== 4001) {
-            console.error(error)
-          }
-        })
-    } else {
-      return
-    }
+    return
   }
 
   const handleCurrencySelect = useCallback(
@@ -432,79 +349,26 @@ export default function AddLiquidity() {
     !depositBDisabled ? currencies[Field.CURRENCY_B]?.symbol : ''
   }`
 
-  const Buttons = () =>
-    addIsUnsupported ? (
-      <ButtonPrimary disabled={true} $borderRadius="12px" padding="12px">
-        <ThemedText.DeprecatedMain mb="4px">
-          <Trans>Unsupported Asset</Trans>
-        </ThemedText.DeprecatedMain>
-      </ButtonPrimary>
-    ) : !account ? (
-      <TraceEvent
-        events={[BrowserEvent.onClick]}
-        name={EventName.CONNECT_WALLET_BUTTON_CLICKED}
-        properties={{ received_swap_quote: false }}
-        element={ElementName.CONNECT_WALLET_BUTTON}
-      >
-        <ButtonLight onClick={toggleWalletModal} $borderRadius="12px" padding="12px">
-          <Trans>Connect Wallet</Trans>
-        </ButtonLight>
-      </TraceEvent>
-    ) : (
-      <AutoColumn gap="md">
-        {(approvalA === ApprovalState.NOT_APPROVED ||
-          approvalA === ApprovalState.PENDING ||
-          approvalB === ApprovalState.NOT_APPROVED ||
-          approvalB === ApprovalState.PENDING) &&
-          isValid && (
-            <RowBetween>
-              {showApprovalA && (
-                <ButtonPrimary
-                  onClick={approveACallback}
-                  disabled={approvalA === ApprovalState.PENDING}
-                  width={showApprovalB ? '48%' : '100%'}
-                >
-                  {approvalA === ApprovalState.PENDING ? (
-                    <Dots>
-                      <Trans>Approving {currencies[Field.CURRENCY_A]?.symbol}</Trans>
-                    </Dots>
-                  ) : (
-                    <Trans>Approve {currencies[Field.CURRENCY_A]?.symbol}</Trans>
-                  )}
-                </ButtonPrimary>
-              )}
-              {showApprovalB && (
-                <ButtonPrimary
-                  onClick={approveBCallback}
-                  disabled={approvalB === ApprovalState.PENDING}
-                  width={showApprovalA ? '48%' : '100%'}
-                >
-                  {approvalB === ApprovalState.PENDING ? (
-                    <Dots>
-                      <Trans>Approving {currencies[Field.CURRENCY_B]?.symbol}</Trans>
-                    </Dots>
-                  ) : (
-                    <Trans>Approve {currencies[Field.CURRENCY_B]?.symbol}</Trans>
-                  )}
-                </ButtonPrimary>
-              )}
-            </RowBetween>
-          )}
-        <ButtonError
-          onClick={() => {
-            expertMode ? onAdd() : setShowConfirm(true)
-          }}
-          disabled={
-            !isValid ||
-            (!argentWalletContract && approvalA !== ApprovalState.APPROVED && !depositADisabled) ||
-            (!argentWalletContract && approvalB !== ApprovalState.APPROVED && !depositBDisabled)
-          }
-          error={!isValid && !!parsedAmounts[Field.CURRENCY_A] && !!parsedAmounts[Field.CURRENCY_B]}
-        >
-          <Text fontWeight={500}>{errorMessage ? errorMessage : <Trans>Preview</Trans>}</Text>
-        </ButtonError>
-      </AutoColumn>
-    )
+  const Buttons = () => (
+    <ButtonError
+      onClick={() => {
+        expertMode ? onAdd() : setShowConfirm(true)
+      }}
+      // disabled={
+      //   !isValid ||
+      //   (!argentWalletContract && approvalA !== ApprovalState.APPROVED && !depositADisabled) ||
+      //   (!argentWalletContract && approvalB !== ApprovalState.APPROVED && !depositBDisabled)
+      // }
+      // error={!isValid && !!parsedAmounts[Field.CURRENCY_A] && !!parsedAmounts[Field.CURRENCY_B]}
+    >
+      <Text fontWeight={500}>
+        {
+          // errorMessage ? errorMessage :
+          <Trans>Preview</Trans>
+        }
+      </Text>
+    </ButtonError>
+  )
 
   return (
     <>

@@ -13,6 +13,7 @@ import lists from './lists/reducer'
 import logs from './logs/slice'
 import mint from './mint/reducer'
 import mintV3 from './mint/v3/reducer'
+import paperPosition from './paperPosition/reducer'
 import { routingApi } from './routing/slice'
 import swap from './swap/reducer'
 import transactions from './transactions/reducer'
@@ -23,6 +24,7 @@ const PERSISTED_KEYS: string[] = ['user', 'transactions', 'lists']
 
 const store = configureStore({
   reducer: {
+    paperPosition,
     application,
     user,
     connection,

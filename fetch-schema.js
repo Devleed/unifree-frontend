@@ -10,6 +10,8 @@ function fetchSchema(url, outputFile) {
     `get-graphql-schema --h Origin=https://app.uniswap.org ${url} | tee ${outputFile}.temp`,
     (error, stdout, stderr) => {
       if (error || stderr) {
+        console.log(error)
+
         console.log(`Failed to fetch schema from ${url}`)
       } else if (stdout) {
         exec(`mv ${outputFile}.temp ${outputFile}`)
