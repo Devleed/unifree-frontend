@@ -1,6 +1,5 @@
 import { Trans } from '@lingui/macro'
 import { Percent, Price, Token } from '@uniswap/sdk-core'
-import IUniswapV2PairJson from '@uniswap/v2-core/build/IUniswapV2Pair.json'
 import { Position } from '@uniswap/v3-sdk'
 import { useWeb3React } from '@web3-react/core'
 import Badge from 'components/Badge'
@@ -9,15 +8,13 @@ import DoubleCurrencyLogo from 'components/DoubleLogo'
 import HoverInlineText from 'components/HoverInlineText'
 import Loader from 'components/Loader'
 import { RowBetween } from 'components/Row'
-import { ethers } from 'ethers'
 import { useToken } from 'hooks/Tokens'
 import useIsTickAtLimit from 'hooks/useIsTickAtLimit'
 import { usePool } from 'hooks/usePools'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { useAppDispatch, useAppSelector } from 'state/hooks'
 import { Bound } from 'state/mint/v3/actions'
-import { updateCustomPosition } from 'state/paperPosition/reducer'
+import { PaperPosition } from 'state/paperPosition/reducer'
 import styled from 'styled-components/macro'
 import { HideSmall, MEDIA_WIDTHS, SmallOnly } from 'theme'
 import { formatTickPrice } from 'utils/formatTickPrice'
@@ -111,31 +108,8 @@ const DataText = styled.div`
     font-size: 18px;
   `};
 `
-
-export type FeeEarning = {
-  amount0: number
-  amount1: number
-}
-export type FeesPerUnitLiquidity = {
-  amount0: number
-  amount1: number
-}
-export interface CustomPosition {
-    feeTier: number
-    liquidity: number
-    tickLower: number
-    tickUpper: number
-    poolAddress: string
-    amount0: number
-    amount1: number
-    feeEarning: FeeEarning
-    feesPerUnitLiquidity: FeesPerUnitLiquidity
-    lpTokens: number
-    user: string
-  }
-
 interface PositionListItemProps {
-  positionDetails: CustomPosition
+  positionDetails: PaperPosition
 }
 
 export function getPriceOrderingFromPositionForUI(position?: Position): {
@@ -193,53 +167,22 @@ export function getPriceOrderingFromPositionForUI(position?: Position): {
 }
 
 export default function PositionListItem({ positionDetails }: PositionListItemProps) {
-  const [token0Address, setToken0Address] = useState<string | null>(null)
-  const [token1Address, setToken1Address] = useState<string | null>(null)
-
   const { provider } = useWeb3React()
   const {
     feeTier: feeAmount,
     liquidity,
     tickLower,
     tickUpper,
-    poolAddress
+    poolAddress,
+    token0: token0Address,
+    token1: token1Address
   } = positionDetails
-
-  const dispatch = useAppDispatch()
-  const paperPositionDetails = useAppSelector(state => state.paperPosition.positionDetails)
-
-  useEffect(() => {
-    const fetchPairData = async () => {
-      const prov = ethers.providers.getDefaultProvider('https://mainnet.infura.io/v3/80ba3747876843469bf0c36d0a355f71')
-      const pair = new ethers.Contract(poolAddress,IUniswapV2PairJson.abi, prov)
-
-      console.log({pair})
-
-      const [token0, token1] = await Promise.all([pair!.token0(), pair!.token1()])
-
-      setToken0Address(token0)
-      setToken1Address(token1)
-    }
-
-   provider && poolAddress && fetchPairData()
-  }, [provider, poolAddress])
 
   const token0 = useToken(token0Address)
   const token1 = useToken(token1Address)
 
   const currency0 = token0 ? unwrappedToken(token0) : undefined
   const currency1 = token1 ? unwrappedToken(token1) : undefined
-
-  useEffect(() => {
-    if(positionDetails && token0Address && token1Address) {
-      dispatch(updateCustomPosition({...positionDetails, token0: token0Address, token1: token1Address}))
-    }
-  }, [positionDetails, dispatch, token0Address, token1Address])
-
-  useEffect(() => {
-    console.log('paperPositionDetails -', paperPositionDetails)
-  }, [paperPositionDetails])
-
 
   // construct Position from details returned
   const [, pool] = usePool(currency0 ?? undefined, currency1 ?? undefined, feeAmount)

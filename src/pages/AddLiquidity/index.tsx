@@ -235,16 +235,17 @@ export default function AddLiquidity() {
       feeTier: position?.pool.fee
     })
 
-    const {data} = await axios.post('http://localhost:3005/liquidity/add', {
+    await axios.post('http://localhost:3005/liquidity/add', {
           poolAddress,
           amount0: parseFloat(position?.amount0.toSignificant(6) || '0'), amount1: parseFloat(position?.amount1.toSignificant(6) || '0'),
           tickLower: position?.tickLower || 0,tickUpper: position?.tickUpper || 0,token0: position?.pool.token0.address || '',
           token1: position?.pool.token1.address || '',
           feeTier: position?.pool.fee || 3000,
-          user: account
+          user: account,
+          timeAdded: Date.now()
     })
 
-    console.log(data)
+    navigate('/pool')
 
     return
   }

@@ -1,6 +1,7 @@
 import { Trans } from '@lingui/macro'
-import PositionListItem, { CustomPosition } from 'components/PositionListItem'
+import PositionListItem from 'components/PositionListItem'
 import React from 'react'
+import { PaperPosition } from 'state/paperPosition/reducer'
 import styled from 'styled-components/macro'
 import { MEDIA_WIDTHS } from 'theme'
 
@@ -59,7 +60,7 @@ const ToggleLabel = styled.button`
 `
 
 type PositionListProps = React.PropsWithChildren<{
-  positions: CustomPosition[]
+  positions: PaperPosition[]
   setUserHideClosedPositions: any
   userHideClosedPositions: boolean
 }>

@@ -1,21 +1,25 @@
 import { Trans } from '@lingui/macro'
 import { Trace, TraceEvent } from '@uniswap/analytics'
 import { BrowserEvent, ElementName, EventName, PageName } from '@uniswap/analytics-events'
+import IUniswapV2PairJson from '@uniswap/v2-core/build/IUniswapV2Pair.json'
 import { useWeb3React } from '@web3-react/core'
 import axios from 'axios'
 import { ButtonGray, ButtonPrimary, ButtonText } from 'components/Button'
 import { AutoColumn } from 'components/Column'
-import { FlyoutAlignment, NewMenu } from 'components/Menu'
+import { NewMenu } from 'components/Menu'
 import PositionList from 'components/PositionList'
-import { CustomPosition } from 'components/PositionListItem'
 import { RowBetween, RowFixed } from 'components/Row'
 import { SwitchLocaleLink } from 'components/SwitchLocaleLink'
 import { isSupportedChain } from 'constants/chains'
+import { ethers } from 'ethers'
 import { useV3Positions } from 'hooks/useV3Positions'
-import { useEffect, useState } from 'react'
-import { AlertTriangle, BookOpen, ChevronDown, ChevronsRight, Inbox, Layers, PlusCircle } from 'react-feather'
+import { useEffect } from 'react'
+import { AlertTriangle, BookOpen, ChevronsRight, Inbox, Layers, PlusCircle } from 'react-feather'
+import { useDispatch } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { useToggleWalletModal } from 'state/application/hooks'
+import { useAppSelector } from 'state/hooks'
+import { CustomPosition, PaperPosition, setPositions } from 'state/paperPosition/reducer'
 import { useUserHideClosedPositions } from 'state/user/hooks'
 import styled, { css, useTheme } from 'styled-components/macro'
 import { HideSmall, ThemedText } from 'theme'
@@ -199,7 +203,10 @@ function WrongNetworkCard() {
 export default function Pool() {
   const { account, chainId } = useWeb3React()
   const toggleWalletModal = useToggleWalletModal()
-  const [customPositions, setCustomPositions] = useState<CustomPosition[]>([])
+
+  const paperPositions = useAppSelector(state => state.paperPosition.positions)
+
+  const dispatch = useDispatch()
 
   const theme = useTheme()
   const [userHideClosedPositions, setUserHideClosedPositions] = useUserHideClosedPositions()
@@ -210,12 +217,22 @@ export default function Pool() {
     const fetchPositions = async () => {
       const { data }: {data: CustomPosition[]} = await axios.get(`http://localhost:3005/liquidity/getUserLiquidity/${account}`)
 
-      console.log('posss -', data)
-      setCustomPositions(data)
+      const customPaperPositions: PaperPosition[] = await Promise.all(data.map(async pos => {
+        const prov = ethers.providers.getDefaultProvider('https://mainnet.infura.io/v3/80ba3747876843469bf0c36d0a355f71')
+        const pair = new ethers.Contract(pos.poolAddress,IUniswapV2PairJson.abi, prov)
+        
+        const [token0, token1] = await Promise.all([pair!.token0(), pair!.token1()])
+
+        return { ...pos, token0, token1 }
+      }))
+
+      dispatch(setPositions(customPaperPositions))
     }
 
     account && fetchPositions()
-  },[account])
+  },[account, dispatch])
+
+  const customPositions = Object.values(paperPositions)
 
   if (!isSupportedChain(chainId)) {
     return <WrongNetworkCard />
@@ -287,7 +304,7 @@ export default function Pool() {
                   <Trans>Pools</Trans>
                 </ThemedText.LargeHeader>
                 <ButtonRow>
-                  {showV2Features && (
+                  {/* {showV2Features && (
                     <Menu
                       menuItems={menuItems}
                       flyoutAlignment={FlyoutAlignment.LEFT}
@@ -300,7 +317,7 @@ export default function Pool() {
                         </MoreOptionsButton>
                       )}
                     />
-                  )}
+                  )} */}
                   <ResponsiveButtonPrimary data-cy="join-pool-button" id="join-pool-button" as={Link} to="/add/ETH">
                     + <Trans>New Position</Trans>
                   </ResponsiveButtonPrimary>
