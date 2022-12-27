@@ -506,9 +506,14 @@ export function PositionPage() {
     )
   }
 
-  return previewRemoveLiquidity && paperPosition && feeValueLower && feeValueUpper ? <LiquidityResult paperPosition={paperPosition} feeValueLower={feeValueLower} feeValueUpper={feeValueUpper} handleBack={() => {
+   async function onLiquidityRemove() {
+    const {data}: { data: PaperPosition} = await axios.delete(`http://localhost:3005/liquidity/remove?userAddress=${paperPosition?.user}&poolAddress=${paperPosition?.poolAddress}`)
+
+    dispatch(updateCustomPosition(data))
     setPreviewRemoveLiquidity(false)
-  }}/> : poolState === PoolState.LOADING || !paperPosition ? (
+  }
+
+  return previewRemoveLiquidity && paperPosition && feeValueLower && feeValueUpper ? <LiquidityResult paperPosition={paperPosition} feeValueLower={feeValueLower} feeValueUpper={feeValueUpper} handleBack={() => setPreviewRemoveLiquidity(false)} onRemoveClick={onLiquidityRemove}/> : poolState === PoolState.LOADING || !paperPosition ? (
     <LoadingRows>
       <div />
       <div />

@@ -35,9 +35,10 @@ type Props = {
   feeValueUpper: CurrencyAmount<Currency>,
   feeValueLower: CurrencyAmount<Currency>,
   handleBack: () => void
+  onRemoveClick: () => void
 }
 
-const LiquidityResult: React.FC<Props> = ({ paperPosition, feeValueLower, feeValueUpper, handleBack }) => {
+const LiquidityResult: React.FC<Props> = ({ paperPosition, feeValueLower, feeValueUpper, handleBack, onRemoveClick }) => {
   const token0 = useToken(paperPosition.token0)
   const token1 = useToken(paperPosition.token1)
 
@@ -123,9 +124,7 @@ const LiquidityResult: React.FC<Props> = ({ paperPosition, feeValueLower, feeVal
               // width="fit-content"
               padding="6px 8px"
               $borderRadius="12px"
-              onClick={() => {
-                console.log('removing')
-              }}
+              onClick={onRemoveClick}
             >
               <Trans>Remove</Trans>
             </ButtonPrimary>

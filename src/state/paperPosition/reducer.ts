@@ -30,14 +30,12 @@ export interface PaperPosition extends CustomPosition {
 }
 
 export interface PaperPositionState {
-  positionDetails: PaperPosition | undefined
   positions: {
     [key: string]: PaperPosition
   }
 }
 
 export const initialState: PaperPositionState = {
-  positionDetails: undefined,
   positions: {}
 }
 
@@ -46,7 +44,6 @@ const paperPositionSlice = createSlice({
   initialState,
   reducers: {
     updateCustomPosition(state, { payload }: { payload: PaperPosition }) {
-      state.positionDetails = { ...state.positionDetails, ...payload}
       state.positions[payload.poolAddress] = {...(state.positions[payload.poolAddress] || {}), ...payload}
     },
     setPositions(state, { payload }: { payload: PaperPosition[] }) {
