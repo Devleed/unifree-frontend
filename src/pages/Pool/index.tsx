@@ -11,6 +11,7 @@ import PositionList from 'components/PositionList'
 import { RowBetween, RowFixed } from 'components/Row'
 import { SwitchLocaleLink } from 'components/SwitchLocaleLink'
 import { isSupportedChain } from 'constants/chains'
+import { SERVER_URL } from 'constants/networks'
 import { ethers } from 'ethers'
 import { useV3Positions } from 'hooks/useV3Positions'
 import { useEffect } from 'react'
@@ -215,7 +216,7 @@ export default function Pool() {
 
   useEffect(() => {
     const fetchPositions = async () => {
-      const { data }: {data: CustomPosition[]} = await axios.get(`http://localhost:3005/liquidity/getUserLiquidity/${account}`)
+      const { data }: {data: CustomPosition[]} = await axios.get(`${SERVER_URL}/liquidity/getUserLiquidity/${account}`)
 
       const customPaperPositions: PaperPosition[] = await Promise.all(data.map(async pos => {
         const prov = ethers.providers.getDefaultProvider('https://mainnet.infura.io/v3/80ba3747876843469bf0c36d0a355f71')

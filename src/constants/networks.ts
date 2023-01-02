@@ -135,3 +135,6 @@ export const RPC_URLS: { [key in SupportedChainId]: string[] } = {
   [SupportedChainId.CELO]: FALLBACK_URLS[SupportedChainId.CELO],
   [SupportedChainId.CELO_ALFAJORES]: FALLBACK_URLS[SupportedChainId.CELO_ALFAJORES],
 }
+
+export const SERVER_URL = 'https://unifree-production.up.railway.app'
+// export const SERVER_URL = 'http://localhost:3005' // ! DEVELOPMENT

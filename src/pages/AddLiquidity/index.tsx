@@ -5,6 +5,7 @@ import { FeeAmount, Pool } from '@uniswap/v3-sdk'
 import { useWeb3React } from '@web3-react/core'
 import axios from 'axios'
 import UnsupportedCurrencyFooter from 'components/swap/UnsupportedCurrencyFooter'
+import { SERVER_URL } from 'constants/networks'
 import useParsedQueryString from 'hooks/useParsedQueryString'
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle } from 'react-feather'
@@ -235,7 +236,7 @@ export default function AddLiquidity() {
       feeTier: position?.pool.fee
     })
 
-    await axios.post('http://localhost:3005/liquidity/add', {
+    await axios.post(`${SERVER_URL}/liquidity/add`, {
           poolAddress,
           amount0: parseFloat(position?.amount0.toSignificant(6) || '0'), amount1: parseFloat(position?.amount1.toSignificant(6) || '0'),
           tickLower: position?.tickLower || 0,tickUpper: position?.tickUpper || 0,token0: position?.pool.token0.address || '',

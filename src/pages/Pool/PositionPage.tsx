@@ -15,6 +15,7 @@ import DoubleCurrencyLogo from 'components/DoubleLogo'
 import CurrencyLogo from 'components/Logo/CurrencyLogo'
 import { RowBetween, RowFixed } from 'components/Row'
 import TransactionConfirmationModal, { ConfirmationModalContent } from 'components/TransactionConfirmationModal'
+import { SERVER_URL } from 'constants/networks'
 import { useToken } from 'hooks/Tokens'
 import useIsTickAtLimit from 'hooks/useIsTickAtLimit'
 import { PoolState, usePool } from 'hooks/usePools'
@@ -407,7 +408,7 @@ export function PositionPage() {
       navigate('/pool')
     } else {
       const calculateEarning = async () => {
-        const { data }: { data: PaperPosition} = await axios.get(`http://localhost:3005/liquidity/calculateEarnings?userAddress=${account}&poolAddress=${parsedTokenId}`)
+        const { data }: { data: PaperPosition} = await axios.get(`${SERVER_URL}/liquidity/calculateEarnings?userAddress=${account}&poolAddress=${parsedTokenId}`)
 
         console.log('posss -', data)
         dispatch(updateCustomPosition(data))
@@ -507,7 +508,7 @@ export function PositionPage() {
   }
 
    async function onLiquidityRemove() {
-    const {data}: { data: PaperPosition} = await axios.delete(`http://localhost:3005/liquidity/remove?userAddress=${paperPosition?.user}&poolAddress=${paperPosition?.poolAddress}`)
+    const {data}: { data: PaperPosition} = await axios.delete(`${SERVER_URL}/liquidity/remove?userAddress=${paperPosition?.user}&poolAddress=${paperPosition?.poolAddress}`)
 
     dispatch(updateCustomPosition(data))
     setPreviewRemoveLiquidity(false)

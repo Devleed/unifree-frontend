@@ -78,14 +78,14 @@ export default function PositionList({
           {positions && ' (' + positions.length + ')'}
         </div>
 
-        <ToggleLabel
+        {/* <ToggleLabel
           id="desktop-hide-closed-positions"
           onClick={() => {
             setUserHideClosedPositions(!userHideClosedPositions)
           }}
         >
           {userHideClosedPositions ? <Trans>Show closed positions</Trans> : <Trans>Hide closed positions</Trans>}
-        </ToggleLabel>
+        </ToggleLabel> */}
       </DesktopHeader>
       <MobileHeader>
         <Trans>Your positions</Trans>
